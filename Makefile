@@ -54,6 +54,17 @@ packer-service_Ray.aarch64: PKR_VAR_nvidia_driver_path := $(NVIDIA_DRIVER_PATH)
 packer-service_Ray.aarch64: packer-ubuntu2404.aarch64 $(DIR_EXPORT)/service_Ray.aarch64.qcow2
 	@$(INFO) "Packer service_Ray.aarch64 done"
 
+
+
+	
+
+packer-service_GitLab: packer-ubuntu2404 $(DIR_EXPORT)/service_GitLab.qcow2
+	@$(INFO) "Packer service_GitLab done"
+
+
+
+
+
 packer-service_Dynamo: PKR_VAR_nvidia_driver_path := $(NVIDIA_DRIVER_PATH)
 packer-service_Dynamo: packer-ubuntu2404 $(DIR_EXPORT)/service_Dynamo.qcow2
 	@$(INFO) "Packer service_Dynamo done"
