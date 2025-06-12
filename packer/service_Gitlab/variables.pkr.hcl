@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "service_Wordpress"
+  default = "service_Gitlab"
 }
 
 variable "input_dir" {
