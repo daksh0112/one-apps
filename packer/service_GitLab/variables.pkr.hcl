@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "service_Gitlab"
+  default = "service_GitLab"
 }
 
 variable "input_dir" {
