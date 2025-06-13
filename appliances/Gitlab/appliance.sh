@@ -1,33 +1,25 @@
+#!/bin/bash
+
 # ---------------------------------------------------------------------------- #
 # Copyright 2018-2025, OpenNebula Project, OpenNebula Systems                  #
 #                                                                              #
-# Licensed under the Apache License, Version 2.0 (the "License"); you may      #
-# not use this file except in compliance with the License. You may obtain      #
-# a copy of the License at                                                     #
-#                                                                              #
-# http://www.apache.org/licenses/LICENSE-2.0                                   #
-#                                                                              #
-# Unless required by applicable law or agreed to in writing, software          #
-# distributed under the License is distributed on an "AS IS" BASIS,            #
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.     #
-# See the License for the specific language governing permissions and          #
-# limitations under the License.                                               #
+# Licensed under the Apache License, Version 2.0                              #
 # ---------------------------------------------------------------------------- #
 
 ### Important notes ##################################################
 #
 # 'ONEAPP_SITE_HOSTNAME' must be set correctly. GitLab uses the hostname
-# during its setup and in URL generation for web access, repos, etc.
+# during setup and for URL generation (web UI, repos, etc).
 #
 ### Important notes ##################################################
 
 # List of contextualization parameters
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_PASSWORD_LENGTH'    'configure' 'Default password length'                            ''
-    'ONEAPP_SITE_HOSTNAME'      'configure' 'Fully qualified domain name or IP'                 ''
-    'ONEAPP_GITLAB_ROOT_PASSWORD' 'configure' 'GitLab root password'                            'O|password'
-    'ONEAPP_SSL_CERT'           'configure' 'SSL certificate'                                   'O|text64'
-    'ONEAPP_SSL_PRIVKEY'        'configure' 'SSL private key'                                   'O|text64'
+    'ONEAPP_PASSWORD_LENGTH'       'configure' 'Default password length'                            ''
+    'ONEAPP_SITE_HOSTNAME'         'configure' 'Fully qualified domain name or IP'                 ''
+    'ONEAPP_GITLAB_ROOT_PASSWORD'  'configure' 'GitLab root password'                              'O|password'
+    'ONEAPP_SSL_CERT'              'configure' 'SSL certificate'                                   'O|text64'
+    'ONEAPP_SSL_PRIVKEY'           'configure' 'SSL private key'                                   'O|text64'
 )
 
 ### Appliance metadata ###############################################
@@ -50,13 +42,27 @@ EOF
 
 ### Contextualization defaults #######################################
 
+gen_password() {
+    tr -dc A-Za-z0-9 </dev/urandom | head -c "${1:-16}" ; echo
+}
+
+get_local_ip() {
+    ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n 1
+}
+
+msg() {
+    local level="$1"; shift
+    echo "[$level] $*"
+}
+
 ONEAPP_PASSWORD_LENGTH="${ONEAPP_PASSWORD_LENGTH:-16}"
 ONEAPP_SITE_HOSTNAME="${ONEAPP_SITE_HOSTNAME:-$(get_local_ip)}"
 ONEAPP_GITLAB_ROOT_PASSWORD="${ONEAPP_GITLAB_ROOT_PASSWORD:-$(gen_password ${ONEAPP_PASSWORD_LENGTH})}"
+ONE_SERVICE_REPORT="/root/gitlab_report.txt"
 
 ### Globals ##########################################################
 
-DEP_PKGS="curl policycoreutils openssh-server postfix firewalld git"
+DEP_PKGS="curl openssh-server ca-certificates tzdata perl postfix"
 
 ###############################################################################
 # Service implementation
@@ -69,6 +75,7 @@ service_cleanup()
 
 service_install()
 {
+    configure_postfix
     install_pkgs ${DEP_PKGS}
     install_gitlab
     create_one_service_metadata
@@ -79,8 +86,6 @@ service_install()
 
 service_configure()
 {
-    stop_services
-    configure_firewall
     configure_gitlab
     enable_services
     start_gitlab
@@ -100,45 +105,37 @@ service_bootstrap()
 # Helper Functions
 ###############################################################################
 
+configure_postfix()
+{
+    msg info "Configuring postfix preseed (non-interactive)"
+    echo "postfix postfix/mailname string ${ONEAPP_SITE_HOSTNAME}" | debconf-set-selections
+    echo "postfix postfix/main_mailer_type string 'Internet Site'" | debconf-set-selections
+}
+
 install_pkgs()
 {
     msg info "Installing required packages"
-    yum install -y epel-release
-    yum install -y "${@}"
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${@}"
 }
 
 install_gitlab()
 {
-    msg info "Installing GitLab CE"
-    curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.rpm.sh | bash
-    EXTERNAL_URL="http://${ONEAPP_SITE_HOSTNAME}" yum install -y gitlab-ce
-}
-
-stop_services()
-{
-    msg info "Stopping GitLab"
-    gitlab-ctl stop || true
+    msg info "Adding GitLab CE repository and installing"
+    curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+    EXTERNAL_URL="http://${ONEAPP_SITE_HOSTNAME}" apt-get install -y gitlab-ce
 }
 
 enable_services()
 {
-    msg info "Enabling services"
-    systemctl enable firewalld
+    msg info "Enabling GitLab service"
+    systemctl enable gitlab-runsvdir.service
 }
 
 start_gitlab()
 {
     msg info "Starting GitLab"
     gitlab-ctl reconfigure
-}
-
-configure_firewall()
-{
-    msg info "Configuring firewall"
-    systemctl start firewalld
-    firewall-cmd --permanent --add-service=http
-    firewall-cmd --permanent --add-service=https
-    firewall-cmd --reload
 }
 
 configure_gitlab()
@@ -168,9 +165,9 @@ configure_gitlab()
 
 postinstall_cleanup()
 {
-    msg info "Cleaning up"
-    yum clean all
-    rm -rf /var/cache/yum
+    msg info "Cleaning up apt cache"
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
 }
 
 report_config()
